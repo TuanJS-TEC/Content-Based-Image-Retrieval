@@ -3,6 +3,7 @@
 #include <cctype>
 #include <filesystem>
 #include <iostream>
+#include <vector>
 
 namespace cbir {
 
@@ -19,13 +20,68 @@ bool isImageFile(const fs::path& p) {
     }
     return ext == ".jpg" || ext == ".jpeg" || ext == ".png" || ext == ".bmp";
 }
+
+bool isNumericToken(const std::string& token) {
+    if (token.empty()) {
+        return false;
+    }
+    for (char c : token) {
+        if (!std::isdigit(static_cast<unsigned char>(c))) {
+            return false;
+        }
+    }
+    return true;
+}
+
+std::string parseClassFromFileName(const fs::path& image_path) {
+    std::string stem = image_path.stem().string();
+    std::vector<std::string> tokens;
+    std::string cur;
+
+    for (char c : stem) {
+        if (c == '_') {
+            if (!cur.empty()) {
+                tokens.push_back(cur);
+                cur.clear();
+            }
+        } else {
+            cur.push_back(c);
+        }
+    }
+    if (!cur.empty()) {
+        tokens.push_back(cur);
+    }
+
+    while (tokens.size() > 1 && isNumericToken(tokens.back())) {
+        tokens.pop_back();
+    }
+
+    if (tokens.empty()) {
+        return stem;
+    }
+
+    std::string out = tokens[0];
+    for (size_t i = 1; i < tokens.size(); ++i) {
+        out += "_" + tokens[i];
+    }
+    return out;
+}
+
+std::string inferClassLabel(const fs::path& image_path, const fs::path& dataset_root) {
+    fs::path parent = image_path.parent_path();
+    if (!dataset_root.empty() && parent != dataset_root && parent.has_filename()) {
+        return parent.filename().string();
+    }
+    return parseClassFromFileName(image_path);
+}
 }  // namespace
 
 Indexer::Indexer(const ImagePreprocessor& preprocessor, const FeatureExtractor& extractor, SqliteRepo& repo)
     : preprocessor_(preprocessor), extractor_(extractor), repo_(repo) {}
 
 bool Indexer::run(const std::string& dataset_path) {
-    if (!fs::exists(dataset_path)) {
+    fs::path dataset_root = fs::weakly_canonical(fs::path(dataset_path));
+    if (!fs::exists(dataset_root)) {
         std::cerr << "Dataset path does not exist: " << dataset_path << "\n";
         return false;
     }
@@ -33,7 +89,7 @@ bool Indexer::run(const std::string& dataset_path) {
     int processed = 0;
     int failed = 0;
 
-    for (const auto& entry : fs::recursive_directory_iterator(dataset_path)) {
+    for (const auto& entry : fs::recursive_directory_iterator(dataset_root)) {
         if (!entry.is_regular_file() || !isImageFile(entry.path())) {
             continue;
         }
@@ -44,7 +100,7 @@ bool Indexer::run(const std::string& dataset_path) {
 
             ImageRecord rec;
             rec.file_path = entry.path().string();
-            rec.class_label = entry.path().parent_path().filename().string();
+            rec.class_label = inferClassLabel(entry.path(), dataset_root);
             rec.width = img.cols;
             rec.height = img.rows;
 

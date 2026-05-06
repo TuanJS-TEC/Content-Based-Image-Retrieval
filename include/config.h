@@ -5,7 +5,7 @@
 namespace cbir {
 
 struct Config {
-    std::string dataset_path = "/Users/minhtuansfile/HoangTuan_Code/CBIR/Dataset";
+    std::string dataset_path = "/Users/minhtuansfile/HoangTuan_Code/CBIR/Dataset_resized_256";
     std::string db_path = "bird_cbir.db";
     std::string query_image_path;
     int top_k = 5;

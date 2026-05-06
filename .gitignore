@@ -6,3 +6,6 @@ build-clang/
 .vscode/
 .cache/
 .DS_Store
+.gitnexus
+Dataset_resized_256/
+*.db
