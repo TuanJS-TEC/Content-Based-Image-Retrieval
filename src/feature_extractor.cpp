@@ -8,6 +8,9 @@
 #include <opencv2/core.hpp>
 #include <opencv2/imgproc.hpp>
 
+using namespace std;
+using namespace cv;
+
 namespace cbir {
 
 namespace {
@@ -20,6 +23,39 @@ void normalizeL1(std::vector<float>& v) {
         x /= sum;
     }
 }
+
+// cv::Mat buildForegroundMaskGrabCut(const cv::Mat& image_bgr) {
+//       // Fallback về Otsu nếu ảnh quá nhỏ
+//       if (image_bgr.rows < 32 || image_bgr.cols < 32) {
+//           return buildForegroundMask(image_bgr);  // giữ nguyên hàm cũ
+//       }
+
+//       const int margin_x = image_bgr.cols / 6;
+//       const int margin_y = image_bgr.rows / 6;
+//       cv::Rect rect(margin_x, margin_y,
+//                     image_bgr.cols - 2 * margin_x,
+//                     image_bgr.rows - 2 * margin_y);
+
+//       cv::Mat bgdModel, fgdModel;
+//       cv::Mat result(image_bgr.size(), CV_8UC1, cv::GC_BGD);
+//       cv::grabCut(image_bgr, result, rect, bgdModel, fgdModel, 3, cv::GC_INIT_WITH_RECT);
+
+//       cv::Mat mask;
+//       cv::compare(result, cv::GC_PR_FGD, mask, cv::CMP_EQ);
+//       cv::Mat fg_mask;
+//       cv::compare(result, cv::GC_FGD, fg_mask, cv::CMP_EQ);
+//       cv::bitwise_or(mask, fg_mask, mask);
+
+//       // Morphological cleanup
+//       cv::morphologyEx(mask, mask, cv::MORPH_CLOSE,
+//                        cv::getStructuringElement(cv::MORPH_ELLIPSE, cv::Size(7, 7)));
+
+//       // Fallback nếu GrabCut cho mask rỗng
+//       if (cv::countNonZero(mask) < 500) {
+//         return buildForegroundMask(image_bgr);
+//       }
+//     return mask;
+// }
 
 cv::Mat buildForegroundMask(const cv::Mat& image_bgr) {
     cv::Mat gray;
