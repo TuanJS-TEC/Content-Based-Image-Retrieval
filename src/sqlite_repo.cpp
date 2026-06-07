@@ -130,7 +130,7 @@ bool SqliteRepo::upsertFeatures(int image_id, const FeatureVector& feat, const s
     return ok;
 }
 
-bool SqliteRepo::fetchAllFeatures(std::vector<std::pair<ImageRecord, FeatureVector>>& rows) const {
+bool SqliteRepo::fetchFromDb(std::vector<std::pair<ImageRecord, FeatureVector>>& rows) const {
     const char* sql =
         "SELECT i.id, i.file_path, i.class_label, i.width, i.height, "
         "f.color_vec, f.shape_vec, f.texture_vec "
@@ -158,6 +158,22 @@ bool SqliteRepo::fetchAllFeatures(std::vector<std::pair<ImageRecord, FeatureVect
         rows.push_back({rec, feat});
     }
     sqlite3_finalize(stmt);
+    return true;
+}
+
+bool SqliteRepo::fetchAllFeatures(std::vector<std::pair<ImageRecord, FeatureVector>>& rows) const {
+    if (memoryCacheLoaded_) {
+        rows = memoryCache_;
+        return true;
+    }
+    return fetchFromDb(rows);
+}
+
+bool SqliteRepo::loadAllToMemory() {
+    memoryCacheLoaded_ = false;
+    memoryCache_.clear();
+    if (!fetchFromDb(memoryCache_)) return false;
+    memoryCacheLoaded_ = true;
     return true;
 }
 

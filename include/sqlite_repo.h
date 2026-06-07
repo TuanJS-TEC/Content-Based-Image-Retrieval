@@ -23,9 +23,17 @@ class SqliteRepo {
 
     bool fetchAllFeatures(std::vector<std::pair<ImageRecord, FeatureVector>>& rows) const;
 
+    bool loadAllToMemory();
+    bool isIndexLoaded() const { return memoryCacheLoaded_; }
+    int cachedCount() const { return static_cast<int>(memoryCache_.size()); }
+
    private:
     std::string db_path_;
     sqlite3* db_ = nullptr;
+    mutable std::vector<std::pair<ImageRecord, FeatureVector>> memoryCache_;
+    bool memoryCacheLoaded_ = false;
+
+    bool fetchFromDb(std::vector<std::pair<ImageRecord, FeatureVector>>& rows) const;
 };
 
 }  // namespace cbir

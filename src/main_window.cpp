@@ -14,6 +14,7 @@
 #include <QTableWidget>
 #include <QTableWidgetItem>
 #include <QTextEdit>
+#include <QTimer>
 #include <QVBoxLayout>
 #include <QWidget>
 
@@ -213,7 +214,12 @@ MainWindow::MainWindow(QWidget* parent) : QMainWindow(parent) {
     connect(queryPickBtn, &QPushButton::clicked, this, &MainWindow::pickQueryImage);
     connect(indexButton_, &QPushButton::clicked, this, &MainWindow::runIndexing);
     connect(searchButton_, &QPushButton::clicked, this, &MainWindow::runSearch);
+    connect(dbPathEdit_, &QLineEdit::editingFinished, this, &MainWindow::loadIndexToRam);
+
+    QTimer::singleShot(0, this, &MainWindow::loadIndexToRam);
 }
+
+MainWindow::~MainWindow() = default;
 
 void MainWindow::pickDatasetFolder() {
     const QString dir = QFileDialog::getExistingDirectory(this, "Select Dataset Folder", datasetPathEdit_->text());
@@ -226,7 +232,32 @@ void MainWindow::pickDbFile() {
     const QString file = QFileDialog::getSaveFileName(this, "Select SQLite DB", dbPathEdit_->text(), "DB files (*.db)");
     if (!file.isEmpty()) {
         dbPathEdit_->setText(file);
+        loadIndexToRam();
     }
+}
+
+void MainWindow::loadIndexToRam() {
+    const std::string dbPath = dbPathEdit_->text().toStdString();
+    if (dbPath == loadedDbPath_ && persistentRepo_ && persistentRepo_->isIndexLoaded()) {
+        return;
+    }
+
+    persistentRepo_ = std::make_unique<SqliteRepo>(dbPath);
+    loadedDbPath_ = dbPath;
+
+    if (!persistentRepo_->open() || !persistentRepo_->initSchema()) {
+        appendLog("Index auto-load: cannot open DB: " + dbPathEdit_->text());
+        return;
+    }
+
+    if (!persistentRepo_->loadAllToMemory() || persistentRepo_->cachedCount() == 0) {
+        appendLog("Index auto-load: DB is empty. Run indexing first.");
+        return;
+    }
+
+    appendLog(QString("Index loaded into RAM: %1 entries from %2")
+                  .arg(persistentRepo_->cachedCount())
+                  .arg(dbPathEdit_->text()));
 }
 
 void MainWindow::pickQueryImage() {
@@ -262,6 +293,8 @@ void MainWindow::runIndexing() {
     setEnabled(true);
     if (ok) {
         appendLog("Indexing completed.");
+        loadedDbPath_.clear();  // force cache refresh on next load
+        loadIndexToRam();
         QMessageBox::information(this, "Done", "Indexing completed successfully.");
     } else {
         appendLog("Indexing failed.");
@@ -285,15 +318,18 @@ void MainWindow::runSearch() {
     setPreviewImage(queryPreviewLabel_, QString::fromStdString(cfg.query_image_path), 300, 220);
     updatePipelineVisualization(QString::fromStdString(cfg.query_image_path));
 
-    ImagePreprocessor preprocessor(cfg.resize_width, cfg.resize_height);
-    FeatureExtractor extractor(8);
-    SqliteRepo repo(cfg.db_path);
-    if (!repo.open() || !repo.initSchema()) {
-        QMessageBox::critical(this, "Error", "Cannot open/init SQLite database.");
+    if (!persistentRepo_ || !persistentRepo_->isIndexLoaded() || loadedDbPath_ != cfg.db_path) {
+        loadIndexToRam();
+    }
+    if (!persistentRepo_ || !persistentRepo_->isIndexLoaded()) {
+        QMessageBox::warning(this, "Index not ready", "No indexed features found. Please run indexing first.");
         return;
     }
 
-    Searcher searcher(preprocessor, extractor, repo, cfg);
+    ImagePreprocessor preprocessor(cfg.resize_width, cfg.resize_height);
+    FeatureExtractor extractor(8);
+
+    Searcher searcher(preprocessor, extractor, *persistentRepo_, cfg);
     std::vector<SearchResult> results;
     const bool ok = searcher.runQuery(cfg.query_image_path, results);
     if (!ok) {

@@ -3,6 +3,10 @@
 #include <QMainWindow>
 
 #include <array>
+#include <memory>
+#include <string>
+
+#include "sqlite_repo.h"
 
 QT_BEGIN_NAMESPACE
 class QLineEdit;
@@ -18,6 +22,7 @@ class MainWindow : public QMainWindow {
 
    public:
     MainWindow(QWidget* parent = nullptr);
+    ~MainWindow();
 
    private slots:
     void pickDatasetFolder();
@@ -25,6 +30,7 @@ class MainWindow : public QMainWindow {
     void pickQueryImage();
     void runIndexing();
     void runSearch();
+    void loadIndexToRam();
 
    private:
     QLineEdit* datasetPathEdit_ = nullptr;
@@ -40,6 +46,9 @@ class MainWindow : public QMainWindow {
     std::array<QLabel*, 5> pipelineTextLabels_{};
     std::array<QLabel*, 5> topImageLabels_{};
     std::array<QLabel*, 5> topInfoLabels_{};
+
+    std::unique_ptr<SqliteRepo> persistentRepo_;
+    std::string loadedDbPath_;
 
     void appendLog(const QString& message);
     void setPreviewImage(QLabel* target, const QString& imagePath, int width, int height);
