@@ -12,9 +12,9 @@ struct Config {
     int resize_width = 256;
     int resize_height = 256;
 
-    float w_color = 0.5f;
-    float w_shape = 0.3f;
-    float w_texture = 0.2f;
+    float w_color = 0.65f;
+    float w_shape = 0.25f;
+    float w_texture = 0.10f;
 };
 
 }  // namespace cbir

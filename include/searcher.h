@@ -25,6 +25,7 @@ class Searcher {
 
     double weightedDistance(const FeatureVector& q, const FeatureVector& d) const;
     static double l2Distance(const std::vector<float>& a, const std::vector<float>& b);
+    static double hellingerDistance(const std::vector<float>& a, const std::vector<float>& b);
 };
 
 }  // namespace cbir

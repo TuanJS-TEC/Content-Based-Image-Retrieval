@@ -28,7 +28,6 @@ class MainWindow : public QMainWindow {
     void pickDatasetFolder();
     void pickDbFile();
     void pickQueryImage();
-    void runIndexing();
     void runSearch();
     void loadIndexToRam();
 
@@ -37,8 +36,9 @@ class MainWindow : public QMainWindow {
     QLineEdit* dbPathEdit_ = nullptr;
     QLineEdit* queryPathEdit_ = nullptr;
     QLineEdit* topKEdit_ = nullptr;
-    QPushButton* indexButton_ = nullptr;
     QPushButton* searchButton_ = nullptr;
+
+    void runIndexing(bool silent = false);
     QTextEdit* logView_ = nullptr;
     QTableWidget* resultTable_ = nullptr;
     QLabel* queryPreviewLabel_ = nullptr;

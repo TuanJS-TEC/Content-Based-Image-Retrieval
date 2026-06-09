@@ -57,31 +57,121 @@ void normalizeL1(std::vector<float>& v) {
 //     return mask;
 // }
 
+// Remove connected components smaller than min_area pixels
+cv::Mat filterSmallComponents(const cv::Mat& mask, int min_area) {
+    cv::Mat labeled, stats, centroids;
+    const int n = cv::connectedComponentsWithStats(mask, labeled, stats, centroids, 8, CV_32S);
+    cv::Mat result = cv::Mat::zeros(mask.size(), CV_8U);
+    for (int i = 1; i < n; ++i) {
+        if (stats.at<int>(i, cv::CC_STAT_AREA) >= min_area) {
+            result.setTo(255, labeled == i);
+        }
+    }
+    return result;
+}
+
 cv::Mat buildForegroundMask(const cv::Mat& image_bgr) {
-    cv::Mat gray;
-    cv::cvtColor(image_bgr, gray, cv::COLOR_BGR2GRAY);
-  
-    cv::Mat global_mask;
-    cv::threshold(gray, global_mask, 0, 255, cv::THRESH_BINARY | cv::THRESH_OTSU);
+    const int rows = image_bgr.rows;
+    const int cols = image_bgr.cols;
+    const int cx = cols / 2;
+    const int cy = rows / 2;
 
-    cv::Mat center_prior(gray.size(), CV_8U, cv::Scalar(0));
-    const int cx = gray.cols / 2;
-    const int cy = gray.rows / 2;
-    const int rx = static_cast<int>(gray.cols * 0.35);
-    const int ry = static_cast<int>(gray.rows * 0.35);
-    cv::ellipse(center_prior, cv::Point(cx, cy), cv::Size(rx, ry), 0.0, 0.0, 360.0, cv::Scalar(255), cv::FILLED);
+    // Estimate background color from border pixels in LAB space
+    cv::Mat lab;
+    cv::cvtColor(image_bgr, lab, cv::COLOR_BGR2Lab);
 
-    cv::Mat centered_mask;
-    cv::bitwise_and(global_mask, center_prior, centered_mask);
-    if (cv::countNonZero(centered_mask) < 200) {
-        centered_mask = global_mask;
+    const int border = std::max(8, std::min(rows, cols) / 20);
+    float sumL = 0, sumA = 0, sumB = 0;
+    int cnt = 0;
+    for (int r = 0; r < rows; r += 2) {
+        for (int c = 0; c < cols; c += 2) {
+            if (r < border || r >= rows - border || c < border || c >= cols - border) {
+                const cv::Vec3b p = lab.at<cv::Vec3b>(r, c);
+                sumL += p[0]; sumA += p[1]; sumB += p[2];
+                ++cnt;
+            }
+        }
+    }
+    if (cnt < 1) cnt = 1;
+    const float bgL = sumL / cnt, bgA = sumA / cnt, bgB = sumB / cnt;
+
+    float varL = 0, varA = 0, varB = 0;
+    for (int r = 0; r < rows; r += 2) {
+        for (int c = 0; c < cols; c += 2) {
+            if (r < border || r >= rows - border || c < border || c >= cols - border) {
+                const cv::Vec3b p = lab.at<cv::Vec3b>(r, c);
+                varL += (p[0] - bgL) * (p[0] - bgL);
+                varA += (p[1] - bgA) * (p[1] - bgA);
+                varB += (p[2] - bgB) * (p[2] - bgB);
+            }
+        }
+    }
+    const float sigL = std::max(5.0f, std::sqrt(varL / cnt));
+    const float sigA = std::max(5.0f, std::sqrt(varA / cnt));
+    const float sigB = std::max(5.0f, std::sqrt(varB / cnt));
+
+    // 2.0σ threshold (down from 2.5σ) to capture dark head/neck feathers
+    cv::Mat color_mask(image_bgr.size(), CV_8U, cv::Scalar(0));
+    const float mah_thr2 = 2.0f * 2.0f;
+    for (int r = 0; r < rows; ++r) {
+        uint8_t* mptr = color_mask.ptr<uint8_t>(r);
+        const cv::Vec3b* lptr = lab.ptr<cv::Vec3b>(r);
+        for (int c = 0; c < cols; ++c) {
+            const float dL = (lptr[c][0] - bgL) / sigL;
+            const float da = (lptr[c][1] - bgA) / sigA;
+            const float db = (lptr[c][2] - bgB) / sigB;
+            if (dL * dL + da * da + db * db > mah_thr2) {
+                mptr[c] = 255;
+            }
+        }
     }
 
-    cv::morphologyEx(centered_mask, centered_mask, cv::MORPH_OPEN,
-                     cv::getStructuringElement(cv::MORPH_ELLIPSE, cv::Size(3, 3)));
-    cv::morphologyEx(centered_mask, centered_mask, cv::MORPH_CLOSE,
+    // Otsu on grayscale with center-aware inversion
+    cv::Mat gray;
+    cv::cvtColor(image_bgr, gray, cv::COLOR_BGR2GRAY);
+    cv::Mat otsu_mask;
+    cv::threshold(gray, otsu_mask, 0, 255, cv::THRESH_BINARY | cv::THRESH_OTSU);
+
+    const int check_r = std::min(rows, cols) / 5;
+    cv::Mat check_circle(gray.size(), CV_8U, cv::Scalar(0));
+    cv::circle(check_circle, cv::Point(cx, cy), check_r, cv::Scalar(255), cv::FILLED);
+    const int center_area = cv::countNonZero(check_circle);
+    cv::Mat center_otsu;
+    cv::bitwise_and(otsu_mask, check_circle, center_otsu);
+    if (cv::countNonZero(center_otsu) < center_area / 3) {
+        cv::bitwise_not(otsu_mask, otsu_mask);
+    }
+
+    // Center prior: 45% radius to cover head region near image edges
+    cv::Mat center_prior(image_bgr.size(), CV_8U, cv::Scalar(0));
+    const int rx = static_cast<int>(cols * 0.45);
+    const int ry = static_cast<int>(rows * 0.45);
+    cv::ellipse(center_prior, cv::Point(cx, cy), cv::Size(rx, ry), 0.0, 0.0, 360.0, cv::Scalar(255), cv::FILLED);
+
+    cv::Mat centered_color, centered_otsu;
+    cv::bitwise_and(color_mask, center_prior, centered_color);
+    cv::bitwise_and(otsu_mask, center_prior, centered_otsu);
+
+    cv::Mat candidate;
+    if (cv::countNonZero(centered_color) >= 400) {
+        candidate = centered_color;
+    } else if (cv::countNonZero(centered_otsu) >= 400) {
+        candidate = centered_otsu;
+    } else {
+        candidate = color_mask;
+    }
+
+    // Large CLOSE(17) bridges body→head gap; OPEN(5) removes noise protrusions;
+    // final CLOSE(9) smooths boundary
+    cv::morphologyEx(candidate, candidate, cv::MORPH_CLOSE,
+                     cv::getStructuringElement(cv::MORPH_ELLIPSE, cv::Size(17, 17)));
+    cv::morphologyEx(candidate, candidate, cv::MORPH_OPEN,
                      cv::getStructuringElement(cv::MORPH_ELLIPSE, cv::Size(5, 5)));
-    return centered_mask;
+    cv::morphologyEx(candidate, candidate, cv::MORPH_CLOSE,
+                     cv::getStructuringElement(cv::MORPH_ELLIPSE, cv::Size(9, 9)));
+
+    // Remove isolated noise blobs that survived morphology
+    return filterSmallComponents(candidate, 200);
 }
 
 float gaussianCenterWeight(int r, int c, int rows, int cols) {
@@ -89,7 +179,7 @@ float gaussianCenterWeight(int r, int c, int rows, int cols) {
     const float cx = static_cast<float>(cols - 1) * 0.5f;
     const float dy = (static_cast<float>(r) - cy) / std::max(1.0f, static_cast<float>(rows));
     const float dx = (static_cast<float>(c) - cx) / std::max(1.0f, static_cast<float>(cols));
-    const float sigma = 0.22f;
+    const float sigma = 0.25f;
     return std::exp(-(dx * dx + dy * dy) / (2.0f * sigma * sigma));
 }
 
@@ -131,11 +221,9 @@ std::vector<float> FeatureExtractor::extractColorLabHistogram(const cv::Mat& ima
         const cv::Vec3b* row_ptr = lab.ptr<cv::Vec3b>(r);
         const uint8_t* mask_ptr = fg_mask.ptr<uint8_t>(r);
         for (int c = 0; c < lab.cols; ++c) {
-            // PWH: prefer center pixels while still retaining weak background context.
-            float weight = 0.25f + gaussianCenterWeight(r, c, lab.rows, lab.cols);
-            if (mask_ptr[c] > 0) {
-                weight *= 1.8f;
-            }
+            if (mask_ptr[c] == 0) continue;  // background excluded — only bird pixels count
+            // Gaussian center weight: center of bird matters more than edges
+            const float weight = gaussianCenterWeight(r, c, lab.rows, lab.cols);
 
             const cv::Vec3b pix = row_ptr[c];
             int b0 = std::min((pix[0] * bins) / 256, bins - 1);
