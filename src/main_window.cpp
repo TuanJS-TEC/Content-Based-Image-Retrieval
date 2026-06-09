@@ -470,7 +470,6 @@ void MainWindow::runSearch() {
         cfg.top_k = 5;
     }
     setPreviewImage(queryPreviewLabel_, QString::fromStdString(cfg.query_image_path), 300, 220);
-    updatePipelineVisualization(QString::fromStdString(cfg.query_image_path));
 
     if (!persistentRepo_ || !persistentRepo_->isIndexLoaded() || loadedDbPath_ != cfg.db_path) {
         loadIndexToRam();

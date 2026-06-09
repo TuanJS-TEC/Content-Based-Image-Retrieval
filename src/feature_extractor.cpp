@@ -81,6 +81,7 @@ cv::Mat buildForegroundMask(const cv::Mat& image_bgr) {
     cv::cvtColor(image_bgr, lab, cv::COLOR_BGR2Lab);
 
     const int border = std::max(8, std::min(rows, cols) / 20);
+    
     float sumL = 0, sumA = 0, sumB = 0;
     int cnt = 0;
     for (int r = 0; r < rows; r += 2) {
@@ -93,7 +94,7 @@ cv::Mat buildForegroundMask(const cv::Mat& image_bgr) {
         }
     }
     if (cnt < 1) cnt = 1;
-    const float bgL = sumL / cnt, bgA = sumA / cnt, bgB = sumB / cnt;
+    const float bgL = sumL / cnt, bgA = sumA / cnt, bgB = sumB / cnt; // mean
 
     float varL = 0, varA = 0, varB = 0;
     for (int r = 0; r < rows; r += 2) {
@@ -106,11 +107,11 @@ cv::Mat buildForegroundMask(const cv::Mat& image_bgr) {
             }
         }
     }
-    const float sigL = std::max(5.0f, std::sqrt(varL / cnt));
+    
+    const float sigL = std::max(5.0f, std::sqrt(varL / cnt)); // standard deviation
     const float sigA = std::max(5.0f, std::sqrt(varA / cnt));
     const float sigB = std::max(5.0f, std::sqrt(varB / cnt));
 
-    // 2.0σ threshold (down from 2.5σ) to capture dark head/neck feathers
     cv::Mat color_mask(image_bgr.size(), CV_8U, cv::Scalar(0));
     const float mah_thr2 = 2.0f * 2.0f;
     for (int r = 0; r < rows; ++r) {
