@@ -3,6 +3,7 @@
 #include <sqlite3.h>
 
 #include <string>
+#include <unordered_map>
 #include <vector>
 
 #include "types.h"
@@ -23,6 +24,9 @@ class SqliteRepo {
 
     bool fetchAllFeatures(std::vector<std::pair<ImageRecord, FeatureVector>>& rows) const;
 
+    // O(1) lookup by image_id from the in-memory cache (valid after loadAllToMemory).
+    const std::pair<ImageRecord, FeatureVector>* findById(int image_id) const;
+
     bool loadAllToMemory();
     bool isIndexLoaded() const { return memoryCacheLoaded_; }
     int cachedCount() const { return static_cast<int>(memoryCache_.size()); }
@@ -31,6 +35,7 @@ class SqliteRepo {
     std::string db_path_;
     sqlite3* db_ = nullptr;
     mutable std::vector<std::pair<ImageRecord, FeatureVector>> memoryCache_;
+    mutable std::unordered_map<int, size_t> id_index_;  // image_id → index in memoryCache_
     bool memoryCacheLoaded_ = false;
 
     bool fetchFromDb(std::vector<std::pair<ImageRecord, FeatureVector>>& rows) const;

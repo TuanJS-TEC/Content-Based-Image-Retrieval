@@ -106,8 +106,8 @@ cv::Mat buildForegroundMask(const cv::Mat& image_bgr) {
                 varB += (p[2] - bgB) * (p[2] - bgB);
             }
         }
-    }
-    
+    }   
+
     const float sigL = std::max(5.0f, std::sqrt(varL / cnt)); // standard deviation
     const float sigA = std::max(5.0f, std::sqrt(varA / cnt));
     const float sigB = std::max(5.0f, std::sqrt(varB / cnt));
@@ -143,10 +143,9 @@ cv::Mat buildForegroundMask(const cv::Mat& image_bgr) {
         cv::bitwise_not(otsu_mask, otsu_mask);
     }
 
-    // Center prior: 45% radius to cover head region near image edges
     cv::Mat center_prior(image_bgr.size(), CV_8U, cv::Scalar(0));
-    const int rx = static_cast<int>(cols * 0.45);
-    const int ry = static_cast<int>(rows * 0.45);
+    const int rx = static_cast<int>(cols * 0.5);
+    const int ry = static_cast<int>(rows * 0.5);
     cv::ellipse(center_prior, cv::Point(cx, cy), cv::Size(rx, ry), 0.0, 0.0, 360.0, cv::Scalar(255), cv::FILLED);
 
     cv::Mat centered_color, centered_otsu;
@@ -162,8 +161,6 @@ cv::Mat buildForegroundMask(const cv::Mat& image_bgr) {
         candidate = color_mask;
     }
 
-    // Large CLOSE(17) bridges body→head gap; OPEN(5) removes noise protrusions;
-    // final CLOSE(9) smooths boundary
     cv::morphologyEx(candidate, candidate, cv::MORPH_CLOSE,
                      cv::getStructuringElement(cv::MORPH_ELLIPSE, cv::Size(17, 17)));
     cv::morphologyEx(candidate, candidate, cv::MORPH_OPEN,
@@ -203,8 +200,8 @@ FeatureExtractor::FeatureExtractor(int bins_per_channel) : bins_per_channel_(bin
 
 FeatureVector FeatureExtractor::extract(const cv::Mat& image_bgr) const {
     FeatureVector f;
-    f.color = extractColorLabHistogram(image_bgr);
-    f.shape = extractShapeFeatures(image_bgr);
+    f.color = extractColorLabHistogram(image_bgr); // Mỗi đặc trưng là một vector 512 chiều 
+    f.shape = extractShapeFeatures(image_bgr); // Mỗi đặc trưng hình dạng là một vector 72 chiều.
     f.texture = extractTextureFeatures(image_bgr);
     return f;
 }
@@ -235,7 +232,7 @@ std::vector<float> FeatureExtractor::extractColorLabHistogram(const cv::Mat& ima
         }
     }
     normalizeL1(hist);
-    return hist;
+    return hist; 
 }
 
 std::vector<float> FeatureExtractor::extractShapeFeatures(const cv::Mat& image_bgr) const {
@@ -252,9 +249,9 @@ std::vector<float> FeatureExtractor::extractShapeFeatures(const cv::Mat& image_b
         hu[i] = static_cast<float>(hu_raw[i]);
     }
 
-    double mu20 = m.mu20 / (m.m00 + 1e-9);
-    double mu02 = m.mu02 / (m.m00 + 1e-9);
-    double mu11 = m.mu11 / (m.m00 + 1e-9);
+    double mu20 = m.mu20 / (m.m00 + 1e-9); // X
+    double mu02 = m.mu02 / (m.m00 + 1e-9); // Y
+    double mu11 = m.mu11 / (m.m00 + 1e-9); // X Y
     double common = std::sqrt(4.0 * mu11 * mu11 + (mu20 - mu02) * (mu20 - mu02));
     double lambda1 = 0.5 * (mu20 + mu02 + common);
     double lambda2 = 0.5 * (mu20 + mu02 - common);

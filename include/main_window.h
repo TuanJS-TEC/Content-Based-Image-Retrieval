@@ -6,6 +6,7 @@
 #include <memory>
 #include <string>
 
+#include "hnsw_index.h"
 #include "sqlite_repo.h"
 
 QT_BEGIN_NAMESPACE
@@ -47,8 +48,11 @@ class MainWindow : public QMainWindow {
     std::array<QLabel*, 5> topImageLabels_{};
     std::array<QLabel*, 5> topInfoLabels_{};
 
-    std::unique_ptr<SqliteRepo> persistentRepo_;
+    std::unique_ptr<SqliteRepo>  persistentRepo_;
+    std::unique_ptr<HnswIndex>   annIndex_;
     std::string loadedDbPath_;
+
+    void buildAndSaveAnnIndex(const std::string& db_path);
 
     void appendLog(const QString& message);
     void setPreviewImage(QLabel* target, const QString& imagePath, int width, int height);

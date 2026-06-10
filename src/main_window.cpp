@@ -29,6 +29,7 @@
 
 #include "config.h"
 #include "feature_extractor.h"
+#include "hnsw_index.h"
 #include "image_preprocess.h"
 #include "indexer.h"
 #include "searcher.h"
@@ -195,6 +196,11 @@ QPixmap matToPixmap(const cv::Mat& bgr) {
     cv::cvtColor(bgr, rgb, cv::COLOR_BGR2RGB);
     QImage img(rgb.data, rgb.cols, rgb.rows, static_cast<int>(rgb.step), QImage::Format_RGB888);
     return QPixmap::fromImage(img.copy());
+}
+
+static std::string hnswIndexPath(const std::string& db_path) {
+    const auto pos = db_path.rfind('.');
+    return (pos != std::string::npos ? db_path.substr(0, pos) : db_path) + ".hnsw";
 }
 
 }  // namespace
@@ -404,6 +410,14 @@ void MainWindow::loadIndexToRam() {
     appendLog(QString("Index loaded: %1 entries from %2")
                   .arg(persistentRepo_->cachedCount())
                   .arg(dbPathEdit_->text()));
+
+    annIndex_ = std::make_unique<HnswIndex>();
+    if (annIndex_->load(hnswIndexPath(dbPath))) {
+        appendLog(QString("ANN index loaded: %1 entries").arg(static_cast<int>(annIndex_->size())));
+    } else {
+        appendLog("ANN index not found – will be built on next indexing.");
+        annIndex_.reset();
+    }
 }
 
 void MainWindow::pickQueryImage() {
@@ -445,6 +459,7 @@ void MainWindow::runIndexing(bool silent) {
         appendLog("Indexing completed.");
         loadedDbPath_.clear();
         loadIndexToRam();
+        buildAndSaveAnnIndex(cfg.db_path);
         if (!silent) {
             QMessageBox::information(this, "Done", "Indexing completed successfully.");
         }
@@ -482,7 +497,9 @@ void MainWindow::runSearch() {
     ImagePreprocessor preprocessor(cfg.resize_width, cfg.resize_height);
     FeatureExtractor extractor(8);
 
-    Searcher searcher(preprocessor, extractor, *persistentRepo_, cfg);
+    const bool usingAnn = cfg.use_ann && annIndex_ && annIndex_->isLoaded();
+    appendLog(usingAnn ? "Search mode: ANN (HNSW)" : "Search mode: Brute-force");
+    Searcher searcher(preprocessor, extractor, *persistentRepo_, cfg, annIndex_.get());
     std::vector<SearchResult> results;
     const bool ok = searcher.runQuery(cfg.query_image_path, results);
     if (!ok) {
@@ -628,6 +645,30 @@ void MainWindow::updatePipelineVisualization(const QString& imagePath) {
         lbl->setText("");
         lbl->setPixmap(matToPixmap(stepImages[i]).scaled(pw, ph, Qt::KeepAspectRatio, Qt::SmoothTransformation));
         pipelineTextLabels_[i]->setText(stepNames[i]);
+    }
+}
+
+void MainWindow::buildAndSaveAnnIndex(const std::string& db_path) {
+    if (!persistentRepo_ || !persistentRepo_->isIndexLoaded()) return;
+
+    std::vector<std::pair<ImageRecord, FeatureVector>> rows;
+    if (!persistentRepo_->fetchAllFeatures(rows) || rows.empty()) return;
+
+    appendLog(QString("Building ANN index for %1 entries…").arg(static_cast<int>(rows.size())));
+    annIndex_ = std::make_unique<HnswIndex>();
+    if (!annIndex_->build(rows)) {
+        appendLog("ANN index build failed.");
+        annIndex_.reset();
+        return;
+    }
+
+    const std::string hnsw_path = hnswIndexPath(db_path);
+    if (annIndex_->save(hnsw_path)) {
+        appendLog(QString("ANN index saved: %1 entries → %2")
+                      .arg(static_cast<int>(annIndex_->size()))
+                      .arg(QString::fromStdString(hnsw_path)));
+    } else {
+        appendLog("ANN index save failed – index still active in memory.");
     }
 }
 

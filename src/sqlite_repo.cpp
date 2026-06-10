@@ -172,9 +172,18 @@ bool SqliteRepo::fetchAllFeatures(std::vector<std::pair<ImageRecord, FeatureVect
 bool SqliteRepo::loadAllToMemory() {
     memoryCacheLoaded_ = false;
     memoryCache_.clear();
+    id_index_.clear();
     if (!fetchFromDb(memoryCache_)) return false;
     memoryCacheLoaded_ = true;
+    for (size_t i = 0; i < memoryCache_.size(); ++i)
+        id_index_[memoryCache_[i].first.id] = i;
     return true;
+}
+
+const std::pair<ImageRecord, FeatureVector>* SqliteRepo::findById(int image_id) const {
+    const auto it = id_index_.find(image_id);
+    if (it == id_index_.end()) return nullptr;
+    return &memoryCache_[it->second];
 }
 
 }  // namespace cbir

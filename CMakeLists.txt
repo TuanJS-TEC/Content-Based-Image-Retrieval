@@ -22,6 +22,14 @@ if(NOT Qt6_FOUND)
     find_package(Qt5 COMPONENTS Widgets REQUIRED)
 endif()
 
+include(FetchContent)
+FetchContent_Declare(
+    hnswlib
+    GIT_REPOSITORY https://github.com/nmslib/hnswlib.git
+    GIT_TAG        v0.8.0
+)
+FetchContent_MakeAvailable(hnswlib)
+
 add_executable(cbir_gui
     src/qt_main.cpp
     src/main_window.cpp
@@ -31,11 +39,13 @@ add_executable(cbir_gui
     src/sqlite_repo.cpp
     src/indexer.cpp
     src/searcher.cpp
+    src/hnsw_index.cpp
 )
 
 target_include_directories(cbir_gui PRIVATE
     include
     ${OpenCV_INCLUDE_DIRS}
+    ${hnswlib_SOURCE_DIR}
 )
 
 target_link_libraries(cbir_gui PRIVATE
@@ -50,4 +60,3 @@ if(Qt6_FOUND)
 else()
     target_link_libraries(cbir_gui PRIVATE Qt5::Widgets)
 endif()
-
